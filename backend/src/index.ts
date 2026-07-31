@@ -9,6 +9,14 @@ const prisma = new PrismaClient()
 const app = express()
 app.use(express.json())
 
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: NodeJS.Timeout
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 app.use(function (req, res, next) {
   res.header('Access-Control-Allow-Origin', '*')
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept')
@@ -284,7 +292,11 @@ app.post('/leads/verify-emails', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'No leads found with the provided IDs' })
     }
 
-    const connection = await Connection.connect({ address: 'localhost:7233' })
+    const connection = await withTimeout(
+      Connection.connect({ address: 'localhost:7233' }),
+      5_000,
+      'Timed out connecting to the Temporal server'
+    )
     const client = new Client({ connection, namespace: 'default' })
 
     let verifiedCount = 0
@@ -293,11 +305,15 @@ app.post('/leads/verify-emails', async (req: Request, res: Response) => {
 
     for (const lead of leads) {
       try {
-        const isVerified = await client.workflow.execute(verifyEmailWorkflow, {
-          taskQueue: 'myQueue',
-          workflowId: `verify-email-${lead.id}-${Date.now()}`,
-          args: [lead.email],
-        })
+        const isVerified = await withTimeout(
+          client.workflow.execute(verifyEmailWorkflow, {
+            taskQueue: 'myQueue',
+            workflowId: `verify-email-${lead.id}-${Date.now()}`,
+            args: [lead.email],
+          }),
+          30_000,
+          'Verification timed out'
+        )
 
         await prisma.lead.update({
           where: { id: lead.id },
