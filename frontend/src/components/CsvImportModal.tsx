@@ -116,6 +116,9 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
       }
 
       toast.success(message)
+      if (data.warnings.length > 0) {
+        toast.error(`${data.warnings.length} lead(s) had an invalid country code, which was cleared`)
+      }
       onClose()
       setCsvData([])
     },
@@ -309,7 +312,15 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
                         </td>
                         <td className="px-3 py-2 text-sm text-gray-900">{lead.email || '-'}</td>
                         <td className="px-3 py-2 text-sm text-gray-900">{lead.companyName || '-'}</td>
-                        <td className="px-3 py-2 text-sm text-red-600">{lead.errors.join(', ') || '-'}</td>
+                        <td className="px-3 py-2 text-sm">
+                          {lead.errors.length > 0 && (
+                            <div className="text-red-600">{lead.errors.join(', ')}</div>
+                          )}
+                          {lead.warnings.length > 0 && (
+                            <div className="text-yellow-600">{lead.warnings.join(', ')}</div>
+                          )}
+                          {lead.errors.length === 0 && lead.warnings.length === 0 && '-'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

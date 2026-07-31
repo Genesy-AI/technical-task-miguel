@@ -9,12 +9,24 @@ export interface CsvLead {
   companyName?: string
   isValid: boolean
   errors: string[]
+  warnings: string[]
   rowIndex: number
 }
 
 export const isValidEmail = (email: string): boolean => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   return emailRegex.test(email)
+}
+
+export const normalizeCountryCode = (value: string | undefined): string | undefined => {
+  if (!value) return undefined
+  const trimmed = value.trim()
+  return /^[A-Za-z]{2}$/.test(trimmed) ? trimmed.toUpperCase() : undefined
+}
+
+export const countryCodeWarning = (rawValue: string): string | undefined => {
+  if (!rawValue || normalizeCountryCode(rawValue)) return undefined
+  return `Invalid country code "${rawValue}" - must be exactly 2 letters, field cleared`
 }
 
 export const parseCsv = (content: string): CsvLead[] => {
@@ -49,6 +61,7 @@ export const parseCsv = (content: string): CsvLead[] => {
     if (Object.values(row).every((value) => !value)) return
 
     const lead: Partial<CsvLead> = { rowIndex: index + 2 }
+    const warnings: string[] = []
 
     Object.entries(row).forEach(([header, value]) => {
       const normalizedHeader = header.toLowerCase().replace(/[^a-z]/g, '')
@@ -67,9 +80,12 @@ export const parseCsv = (content: string): CsvLead[] => {
         case 'jobtitle':
           lead.jobTitle = trimmedValue || undefined
           break
-        case 'countrycode':
-          lead.countryCode = trimmedValue || undefined
+        case 'countrycode': {
+          lead.countryCode = normalizeCountryCode(trimmedValue)
+          const warning = countryCodeWarning(trimmedValue)
+          if (warning) warnings.push(warning)
           break
+        }
         case 'companyname':
           lead.companyName = trimmedValue || undefined
           break
@@ -96,6 +112,7 @@ export const parseCsv = (content: string): CsvLead[] => {
       email: lead.email || '',
       isValid: errors.length === 0,
       errors,
+      warnings,
     } as CsvLead)
   })
 

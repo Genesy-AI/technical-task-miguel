@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseCsv, isValidEmail } from './csvParser'
+import { parseCsv, isValidEmail, normalizeCountryCode, countryCodeWarning } from './csvParser'
 
 describe('isValidEmail', () => {
   it('should return true for valid email addresses', () => {
@@ -17,6 +17,42 @@ describe('isValidEmail', () => {
     expect(isValidEmail('test.example.com')).toBe(false)
     expect(isValidEmail('test@.com')).toBe(false)
     expect(isValidEmail('test@example')).toBe(false)
+  })
+})
+
+describe('normalizeCountryCode', () => {
+  it('should uppercase valid 2-letter codes', () => {
+    expect(normalizeCountryCode('us')).toBe('US')
+    expect(normalizeCountryCode('Us')).toBe('US')
+    expect(normalizeCountryCode('US')).toBe('US')
+  })
+
+  it('should trim whitespace before validating', () => {
+    expect(normalizeCountryCode(' us ')).toBe('US')
+  })
+
+  it('should return undefined for invalid formats', () => {
+    expect(normalizeCountryCode('USA')).toBeUndefined()
+    expect(normalizeCountryCode('XXX')).toBeUndefined()
+    expect(normalizeCountryCode('12')).toBeUndefined()
+    expect(normalizeCountryCode('U1')).toBeUndefined()
+    expect(normalizeCountryCode('')).toBeUndefined()
+    expect(normalizeCountryCode(undefined)).toBeUndefined()
+  })
+})
+
+describe('countryCodeWarning', () => {
+  it('should return undefined for valid or empty values', () => {
+    expect(countryCodeWarning('US')).toBeUndefined()
+    expect(countryCodeWarning('us')).toBeUndefined()
+    expect(countryCodeWarning('')).toBeUndefined()
+  })
+
+  it('should return a descriptive message for invalid values', () => {
+    expect(countryCodeWarning('XXX')).toBe(
+      'Invalid country code "XXX" - must be exactly 2 letters, field cleared'
+    )
+    expect(countryCodeWarning('12')).toContain('"12"')
   })
 })
 
@@ -66,6 +102,7 @@ John,Doe,john.doe@example.com,Developer,US,Tech Corp`
       companyName: 'Tech Corp',
       isValid: true,
       errors: [],
+      warnings: [],
       rowIndex: 2,
     })
   })
@@ -152,6 +189,37 @@ John,Doe,john@example.com,,`
     expect(result[0].jobTitle).toBeUndefined()
     expect(result[0].countryCode).toBeUndefined()
     expect(result[0].isValid).toBe(true)
+  })
+
+  it('should discard invalid country codes without blocking import, but warn about them', () => {
+    const csv = `firstName,lastName,email,countryCode
+John,Doe,john@example.com,XXX
+Jane,Smith,jane@example.com,12
+Bob,Jones,bob@example.com,usa`
+
+    const result = parseCsv(csv)
+
+    expect(result).toHaveLength(3)
+    result.forEach((lead) => {
+      expect(lead.countryCode).toBeUndefined()
+      expect(lead.isValid).toBe(true)
+      expect(lead.errors).toHaveLength(0)
+      expect(lead.warnings).toHaveLength(1)
+      expect(lead.warnings[0]).toMatch(/Invalid country code/)
+    })
+  })
+
+  it('should not warn when country code is a valid 2-letter code or omitted', () => {
+    const csv = `firstName,lastName,email,countryCode
+John,Doe,john@example.com,US
+Jane,Smith,jane@example.com,`
+
+    const result = parseCsv(csv)
+
+    expect(result).toHaveLength(2)
+    result.forEach((lead) => {
+      expect(lead.warnings).toHaveLength(0)
+    })
   })
 
   it('should preserve row index correctly', () => {

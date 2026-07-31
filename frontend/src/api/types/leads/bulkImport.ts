@@ -18,4 +18,8 @@ export interface LeadsBulkImportOutput {
     lead: any
     error: string
   }>
+  warnings: Array<{
+    lead: any
+    warning: string
+  }>
 }
