@@ -4,6 +4,8 @@ import { Connection, Client } from '@temporalio/client'
 import { verifyEmailWorkflow } from './workflows'
 import { generateMessageFromTemplate } from './utils/messageGenerator'
 import { normalizeCountryCode, countryCodeWarning } from './utils/countryCode'
+import { normalizeYearsAtCompany, yearsAtCompanyWarning } from './utils/yearsAtCompany'
+import { normalizeLinkedin, linkedinWarning } from './utils/linkedin'
 import { runTemporalWorker } from './worker'
 const prisma = new PrismaClient()
 const app = express()
@@ -230,8 +232,13 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
     const warnings: Array<{ lead: any; warning: string }> = []
 
     for (const lead of uniqueLeads) {
-      const warning = countryCodeWarning(lead.countryCode)
-      if (warning) {
+      const fieldWarnings = [
+        countryCodeWarning(lead.countryCode),
+        yearsAtCompanyWarning(lead.yearsAtCompany),
+        linkedinWarning(lead.linkedin),
+      ].filter((warning): warning is string => Boolean(warning))
+
+      for (const warning of fieldWarnings) {
         warnings.push({
           lead: { firstName: lead.firstName, lastName: lead.lastName, email: lead.email },
           warning,
@@ -247,6 +254,9 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
             jobTitle: lead.jobTitle ? lead.jobTitle.trim() : null,
             countryCode: normalizeCountryCode(lead.countryCode) ?? null,
             companyName: lead.companyName ? lead.companyName.trim() : null,
+            phoneNumber: lead.phoneNumber ? String(lead.phoneNumber).trim() : null,
+            yearsAtCompany: normalizeYearsAtCompany(lead.yearsAtCompany) ?? null,
+            linkedin: normalizeLinkedin(lead.linkedin) ?? null,
           },
         })
         importedCount++

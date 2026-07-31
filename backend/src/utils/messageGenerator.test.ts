@@ -9,6 +9,9 @@ describe('generateMessageFromTemplate', () => {
     jobTitle: 'Software Engineer',
     companyName: 'Tech Corp',
     countryCode: 'US',
+    phoneNumber: '+1-555-0100',
+    yearsAtCompany: 3,
+    linkedin: 'https://www.linkedin.com/in/johndoe',
   }
 
   const partialLead: Lead = {
@@ -204,6 +207,37 @@ describe('generateMessageFromTemplate', () => {
       const template = 'Hi {firstName} from {companyName}!'
       const result = generateMessageFromTemplate(template, emojiLead)
       expect(result).toBe('Hi John 😊 from TechCorp 🚀!')
+    })
+  })
+
+  describe('newly added lead fields', () => {
+    it('should substitute phoneNumber, yearsAtCompany, and linkedin', () => {
+      const template = 'Call {firstName} at {phoneNumber}, {yearsAtCompany} years in, see {linkedin}'
+      const result = generateMessageFromTemplate(template, fullLead)
+      expect(result).toBe(
+        'Call John at +1-555-0100, 3 years in, see https://www.linkedin.com/in/johndoe'
+      )
+    })
+
+    it('should not treat yearsAtCompany of 0 as a missing field', () => {
+      const newHire: Lead = { firstName: 'Alex', yearsAtCompany: 0 }
+      const template = '{firstName} has been here for {yearsAtCompany} years'
+      const result = generateMessageFromTemplate(template, newHire)
+      expect(result).toBe('Alex has been here for 0 years')
+    })
+
+    it('should throw when phoneNumber is missing', () => {
+      const template = 'Call {firstName} at {phoneNumber}'
+      expect(() => generateMessageFromTemplate(template, minimalLead)).toThrow(
+        'Missing required field: phoneNumber'
+      )
+    })
+
+    it('should throw when linkedin is missing', () => {
+      const template = 'See {firstName} on {linkedin}'
+      expect(() => generateMessageFromTemplate(template, minimalLead)).toThrow(
+        'Missing required field: linkedin'
+      )
     })
   })
 })
