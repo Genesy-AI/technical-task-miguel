@@ -1,4 +1,4 @@
-import { FC, useState, useEffect, useCallback, useRef } from 'react'
+import { FC, useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
@@ -10,6 +10,33 @@ interface MessageTemplateModalProps {
   selectedLeadIds: number[]
   selectedLeadsCount: number
 }
+
+const FIELD_GROUPS: { label: string; fields: { key: string; label: string }[] }[] = [
+  {
+    label: 'Personal',
+    fields: [
+      { key: 'firstName', label: 'First name' },
+      { key: 'lastName', label: 'Last name' },
+      { key: 'email', label: 'Email' },
+    ],
+  },
+  {
+    label: 'Company',
+    fields: [
+      { key: 'companyName', label: 'Company' },
+      { key: 'jobTitle', label: 'Job title' },
+      { key: 'yearsAtCompany', label: 'Years at company' },
+    ],
+  },
+  {
+    label: 'Contact',
+    fields: [
+      { key: 'phoneNumber', label: 'Phone number' },
+      { key: 'linkedin', label: 'LinkedIn' },
+      { key: 'countryCode', label: 'Country code' },
+    ],
+  },
+]
 
 export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
   isOpen,
@@ -23,7 +50,12 @@ export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
     generatedCount: number
     errors: Array<{ leadId: number; leadName: string; error: string }>
   } | null>(null)
+  const [isPickerOpen, setIsPickerOpen] = useState(false)
+  const [pickerSearch, setPickerSearch] = useState('')
+  const [pickerPosition, setPickerPosition] = useState<{ top: number; left: number } | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
 
   const generateMessagesMutation = useMutation({
@@ -75,6 +107,8 @@ export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
       onClose()
       setTemplate('')
       setGenerationResult(null)
+      setIsPickerOpen(false)
+      setPickerSearch('')
     }
   }, [generateMessagesMutation.isPending, onClose])
 
@@ -86,7 +120,10 @@ export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
 
   useEffect(() => {
     const handleEscapeKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key !== 'Escape' || !isOpen) return
+      if (isPickerOpen) {
+        setIsPickerOpen(false)
+      } else {
         handleClose()
       }
     }
@@ -104,9 +141,53 @@ export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
       document.removeEventListener('keydown', handleEscapeKey)
       document.body.style.overflow = 'unset'
     }
-  }, [isOpen, handleClose])
+  }, [isOpen, handleClose, isPickerOpen])
 
-  const availableFields = ['firstName', 'lastName', 'email', 'jobTitle', 'companyName', 'countryCode']
+  useEffect(() => {
+    if (!isPickerOpen) return
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node
+      const clickedTrigger = triggerRef.current?.contains(target) ?? false
+      const clickedPanel = panelRef.current?.contains(target) ?? false
+      if (!clickedTrigger && !clickedPanel) {
+        setIsPickerOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isPickerOpen])
+
+  const updatePickerPosition = useCallback(() => {
+    if (!triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    setPickerPosition({ top: rect.bottom + 4, left: rect.left })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!isPickerOpen) return
+
+    updatePickerPosition()
+    window.addEventListener('resize', updatePickerPosition)
+    window.addEventListener('scroll', updatePickerPosition, true)
+
+    return () => {
+      window.removeEventListener('resize', updatePickerPosition)
+      window.removeEventListener('scroll', updatePickerPosition, true)
+    }
+  }, [isPickerOpen, updatePickerPosition])
+
+  const normalizedSearch = pickerSearch.trim().toLowerCase()
+  const filteredFieldGroups = FIELD_GROUPS.map((group) => ({
+    ...group,
+    fields: group.fields.filter(
+      (field) =>
+        !normalizedSearch ||
+        field.key.toLowerCase().includes(normalizedSearch) ||
+        field.label.toLowerCase().includes(normalizedSearch)
+    ),
+  })).filter((group) => group.fields.length > 0)
 
   const insertField = (field: string) => {
     if (textareaRef.current) {
@@ -156,19 +237,73 @@ export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
                 Message Template
               </label>
               <div className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  <span className="text-sm text-gray-600">Insert field:</span>
-                  {availableFields.map((field) => (
-                    <button
-                      key={field}
-                      type="button"
-                      onClick={() => insertField(field)}
-                      className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded hover:bg-blue-200 transition-colors"
+                <div ref={triggerRef} className="inline-block">
+                  <button
+                    type="button"
+                    onClick={() => setIsPickerOpen((open) => !open)}
+                    className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 transition-colors"
+                  >
+                    Insert variable
+                    <svg
+                      className="ml-1.5 -mr-0.5 h-3.5 w-3.5"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
                     >
-                      {`{${field}}`}
-                    </button>
-                  ))}
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
                 </div>
+
+                {isPickerOpen &&
+                  pickerPosition &&
+                  createPortal(
+                    <div
+                      ref={panelRef}
+                      style={{ top: pickerPosition.top, left: pickerPosition.left }}
+                      className="fixed w-72 bg-white rounded-md shadow-lg z-[60] border border-gray-200"
+                    >
+                      <div className="p-2 border-b border-gray-100">
+                        <input
+                          type="text"
+                          autoFocus
+                          autoComplete="off"
+                          value={pickerSearch}
+                          onChange={(e) => setPickerSearch(e.target.value)}
+                          placeholder="Search fields..."
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="max-h-64 overflow-y-auto py-1">
+                        {filteredFieldGroups.length === 0 ? (
+                          <div className="px-3 py-3 text-sm text-gray-500">No matching fields</div>
+                        ) : (
+                          filteredFieldGroups.map((group) => (
+                            <div key={group.label} className="px-2 py-1">
+                              <div className="px-1 py-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                                {group.label}
+                              </div>
+                              <div className="flex flex-wrap gap-1.5 px-1 pb-1">
+                                {group.fields.map((field) => (
+                                  <button
+                                    key={field.key}
+                                    type="button"
+                                    onClick={() => insertField(field.key)}
+                                    title={field.label}
+                                    className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded hover:bg-blue-200 transition-colors"
+                                  >
+                                    {`{${field.key}}`}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>,
+                    document.body
+                  )}
                 <textarea
                   ref={textareaRef}
                   id="message-template"

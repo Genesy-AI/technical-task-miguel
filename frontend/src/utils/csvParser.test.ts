@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { parseCsv, isValidEmail, normalizeCountryCode, countryCodeWarning } from './csvParser'
+import {
+  parseCsv,
+  isValidEmail,
+  normalizeCountryCode,
+  countryCodeWarning,
+  normalizeYearsAtCompany,
+  yearsAtCompanyWarning,
+  normalizeLinkedin,
+  linkedinWarning,
+} from './csvParser'
 
 describe('isValidEmail', () => {
   it('should return true for valid email addresses', () => {
@@ -53,6 +62,72 @@ describe('countryCodeWarning', () => {
       'Invalid country code "XXX" - must be exactly 2 letters, field cleared'
     )
     expect(countryCodeWarning('12')).toContain('"12"')
+  })
+})
+
+describe('normalizeYearsAtCompany', () => {
+  it('should return the number for valid whole numbers', () => {
+    expect(normalizeYearsAtCompany('5')).toBe(5)
+    expect(normalizeYearsAtCompany('0')).toBe(0)
+  })
+
+  it('should trim whitespace before validating', () => {
+    expect(normalizeYearsAtCompany(' 7 ')).toBe(7)
+  })
+
+  it('should return undefined for invalid values', () => {
+    expect(normalizeYearsAtCompany('five')).toBeUndefined()
+    expect(normalizeYearsAtCompany('-1')).toBeUndefined()
+    expect(normalizeYearsAtCompany('3.5')).toBeUndefined()
+    expect(normalizeYearsAtCompany('')).toBeUndefined()
+    expect(normalizeYearsAtCompany(undefined)).toBeUndefined()
+  })
+})
+
+describe('yearsAtCompanyWarning', () => {
+  it('should return undefined for valid or empty values', () => {
+    expect(yearsAtCompanyWarning('5')).toBeUndefined()
+    expect(yearsAtCompanyWarning('0')).toBeUndefined()
+    expect(yearsAtCompanyWarning('')).toBeUndefined()
+  })
+
+  it('should return a descriptive message for invalid values', () => {
+    expect(yearsAtCompanyWarning('five')).toBe(
+      'Invalid years at company "five" - must be a whole number between 0 and 100, field cleared'
+    )
+    expect(yearsAtCompanyWarning('-1')).toContain('"-1"')
+  })
+})
+
+describe('normalizeLinkedin', () => {
+  it('should accept a linkedin.com URL with or without protocol', () => {
+    expect(normalizeLinkedin('https://www.linkedin.com/in/johndoe')).toBe(
+      'https://www.linkedin.com/in/johndoe'
+    )
+    expect(normalizeLinkedin('linkedin.com/in/johndoe')).toBe('https://linkedin.com/in/johndoe')
+  })
+
+  it('should trim whitespace before validating', () => {
+    expect(normalizeLinkedin(' linkedin.com/in/johndoe ')).toBe('https://linkedin.com/in/johndoe')
+  })
+
+  it('should return undefined for non-linkedin URLs or invalid values', () => {
+    expect(normalizeLinkedin('https://twitter.com/johndoe')).toBeUndefined()
+    expect(normalizeLinkedin('not a url')).toBeUndefined()
+    expect(normalizeLinkedin(undefined)).toBeUndefined()
+  })
+})
+
+describe('linkedinWarning', () => {
+  it('should return undefined for valid or empty values', () => {
+    expect(linkedinWarning('https://www.linkedin.com/in/johndoe')).toBeUndefined()
+    expect(linkedinWarning('')).toBeUndefined()
+  })
+
+  it('should return a descriptive message for invalid values', () => {
+    expect(linkedinWarning('https://twitter.com/johndoe')).toBe(
+      'Invalid LinkedIn URL "https://twitter.com/johndoe" - must be a linkedin.com link, field cleared'
+    )
   })
 })
 
@@ -220,6 +295,53 @@ Jane,Smith,jane@example.com,`
     result.forEach((lead) => {
       expect(lead.warnings).toHaveLength(0)
     })
+  })
+
+  it('should parse phoneNumber, yearsInRole, and linkedin columns', () => {
+    const csv = `firstName,lastName,email,phoneNumber,yearsInRole,linkedin
+John,Doe,john@example.com,+1-555-0100,3,linkedin.com/in/johndoe`
+
+    const result = parseCsv(csv)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].phoneNumber).toBe('+1-555-0100')
+    expect(result[0].yearsAtCompany).toBe(3)
+    expect(result[0].linkedin).toBe('https://linkedin.com/in/johndoe')
+    expect(result[0].isValid).toBe(true)
+    expect(result[0].warnings).toHaveLength(0)
+  })
+
+  it('should also accept the yearsAtCompany header spelling', () => {
+    const csv = `firstName,lastName,email,yearsAtCompany
+John,Doe,john@example.com,5`
+
+    const result = parseCsv(csv)
+
+    expect(result[0].yearsAtCompany).toBe(5)
+  })
+
+  it('should discard an invalid years value without blocking import, but warn about it', () => {
+    const csv = `firstName,lastName,email,yearsInRole
+John,Doe,john@example.com,five`
+
+    const result = parseCsv(csv)
+
+    expect(result[0].yearsAtCompany).toBeUndefined()
+    expect(result[0].isValid).toBe(true)
+    expect(result[0].warnings).toHaveLength(1)
+    expect(result[0].warnings[0]).toMatch(/Invalid years at company/)
+  })
+
+  it('should discard a non-linkedin URL without blocking import, but warn about it', () => {
+    const csv = `firstName,lastName,email,linkedin
+John,Doe,john@example.com,https://twitter.com/johndoe`
+
+    const result = parseCsv(csv)
+
+    expect(result[0].linkedin).toBeUndefined()
+    expect(result[0].isValid).toBe(true)
+    expect(result[0].warnings).toHaveLength(1)
+    expect(result[0].warnings[0]).toMatch(/Invalid LinkedIn URL/)
   })
 
   it('should preserve row index correctly', () => {

@@ -7,6 +7,9 @@ export interface CsvLead {
   jobTitle?: string
   countryCode?: string
   companyName?: string
+  phoneNumber?: string
+  yearsAtCompany?: number
+  linkedin?: string
   isValid: boolean
   errors: string[]
   warnings: string[]
@@ -27,6 +30,38 @@ export const normalizeCountryCode = (value: string | undefined): string | undefi
 export const countryCodeWarning = (rawValue: string): string | undefined => {
   if (!rawValue || normalizeCountryCode(rawValue)) return undefined
   return `Invalid country code "${rawValue}" - must be exactly 2 letters, field cleared`
+}
+
+export const normalizeYearsAtCompany = (value: string | undefined): number | undefined => {
+  if (!value) return undefined
+  const num = Number(value.trim())
+  return Number.isInteger(num) && num >= 0 && num <= 100 ? num : undefined
+}
+
+export const yearsAtCompanyWarning = (rawValue: string): string | undefined => {
+  if (!rawValue || normalizeYearsAtCompany(rawValue) !== undefined) return undefined
+  return `Invalid years at company "${rawValue}" - must be a whole number between 0 and 100, field cleared`
+}
+
+export const normalizeLinkedin = (value: string | undefined): string | undefined => {
+  if (!value) return undefined
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+
+  try {
+    const url = new URL(candidate)
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, '')
+    return hostname === 'linkedin.com' ? candidate : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export const linkedinWarning = (rawValue: string): string | undefined => {
+  if (!rawValue || normalizeLinkedin(rawValue)) return undefined
+  return `Invalid LinkedIn URL "${rawValue}" - must be a linkedin.com link, field cleared`
 }
 
 export const parseCsv = (content: string): CsvLead[] => {
@@ -89,6 +124,26 @@ export const parseCsv = (content: string): CsvLead[] => {
         case 'companyname':
           lead.companyName = trimmedValue || undefined
           break
+        case 'phonenumber':
+        case 'phone':
+          lead.phoneNumber = trimmedValue || undefined
+          break
+        case 'yearsinrole':
+        case 'yearsatcompany':
+        case 'years': {
+          lead.yearsAtCompany = normalizeYearsAtCompany(trimmedValue)
+          const warning = yearsAtCompanyWarning(trimmedValue)
+          if (warning) warnings.push(warning)
+          break
+        }
+        case 'linkedin':
+        case 'linkedinurl':
+        case 'linkedinprofile': {
+          lead.linkedin = normalizeLinkedin(trimmedValue)
+          const warning = linkedinWarning(trimmedValue)
+          if (warning) warnings.push(warning)
+          break
+        }
       }
     })
 
